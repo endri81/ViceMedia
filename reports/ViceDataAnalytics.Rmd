@@ -1,0 +1,964 @@
+---
+title: "Vice Data Analytics"
+date: "`r Sys.Date()`"
+author: "Endri Raco"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    default_style: "light"
+    downcute_theme: "default"
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+## specify the packages needed
+if(!require(tidyverse)) install.packages('tidyverse', 
+                                         repos = 'http://cran.us.r-project.org')
+if(!require(dlookr)) install.packages('dlookr', 
+                                      repos = 'http://cran.us.r-project.org')
+if(!require(here)) install.packages('here', 
+                                    repos = 'http://cran.us.r-project.org')
+if(!require(hrbrthemes)) install.packages('hrbrthemes', 
+                                          repos = 'http://cran.us.r-project.org')
+if(!require(viridis)) install.packages('viridis', 
+                                       repos = 'http://cran.us.r-project.org')
+if(!require(ggridges)) install.packages('ggridges', 
+                                        repos = 'http://cran.us.r-project.org')
+if(!require(scales)) install.packages('scales', 
+                                      repos = 'http://cran.us.r-project.org')
+if(!require(dygraphs)) install.packages('dygraphs', 
+                                        repos = 'http://cran.us.r-project.org')
+if(!require(xts)) install.packages('xts', 
+                                   repos = 'http://cran.us.r-project.org')
+if(!require(ggExtra)) install.packages('ggExtra', 
+                                       repos = 'http://cran.us.r-project.org')
+if(!require(TSstudio)) install.packages('TSstudio', 
+                                       repos = 'http://cran.us.r-project.org')
+if(!require(dygraphs)) install.packages('dygraphs', 
+                                       repos = 'http://cran.us.r-project.org')
+if(!require(GGally)) install.packages('GGally', 
+                                       repos = 'http://cran.us.r-project.org')
+if(!require(vroom)) install.packages("vroom", 
+                                        repos = "http://cran.us.r-project.org")
+if(!require(stringr)) install.packages("stringr", 
+                                      repos = "http://cran.us.r-project.org")
+if(!require(tm)) install.packages("tm", 
+                                      repos = "http://cran.us.r-project.org")
+if(!require(tidytext)) install.packages("tidytext", 
+                                      repos = "http://cran.us.r-project.org")
+if(!require(textclean)) install.packages("textclean", 
+                                      repos = "http://cran.us.r-project.org")
+if(!require(wordcloud)) install.packages("wordcloud", 
+                                      repos = "http://cran.us.r-project.org")
+if(!require(wordcloud2)) install.packages("wordcloud2", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(tidytext)) install.packages("tidytext", 
+                                    repos = "http://cran.us.r-project.org")
+
+if(!require(textclean)) install.packages("textclean", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(tidystopwords)) install.packages("tidystopwords", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(tm)) install.packages("tm", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(quanteda)) install.packages("quanteda", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(topicmodels)) install.packages("topicmodels", 
+                                    repos = "http://cran.us.r-project.org")
+if(!require(ldatuning)) install.packages("ldatuning", 
+                                    repos = "http://cran.us.r-project.org")
+
+knitr::opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE)
+customColor = "#FFA07A"
+```
+
+## Introduction
+
+The aim of this report is to answer following questions using data techniques:
+
+1.  How company content strategy has shifted over time.
+
+2.  Are all kinds of engagement beneficial for video popularity? Naturally, a more popular video will have more reactions of all kinds, but does a higher fraction of, say, "Angry" reactions, have a negative effect on video performance?
+
+3.  Are there any topics, word combinations which always perform higher than average, or have been successful as of recently?
+
+We will use dataset **vice_data_for_test_task** This dataset contains Facebook video data from the past three years. The data concerns posts from four pages belonging to VICE.
+
+For all project calculations is used the following PC:
+
+```{r pc}
+print('Operating System:')
+version
+```
+
+ 
+
+## Data preparation
+
+### Importing data
+
+```{r data-download}
+data_path <- here("data", "vice_data_for_test_task.csv")
+vice_data <- read_csv(data_path)
+```
+
+### A first glimpse
+
+First, we make a check if our data format is indeed **data frame**:
+
+ 
+
+```{r data-format, eval=TRUE}
+# Check format
+class(vice_data)
+```
+
+We see that **vice_data** data frame has `r nrow(vice_data)` rows and `r ncol(vice_data)` variables.
+
+ 
+
+Now let's check the structure of **vice_data** data frame
+
+```{r data-str, eval=TRUE}
+# Check structure
+glimpse(vice_data)
+```
+
+It is a good idea to check for dublicates in rows so to create a general idea about real amount of data.
+
+ 
+
+```{r distinct_data, eval=TRUE,cache=TRUE}
+# Distinct users, movies, genres
+nrow(vice_data %>% distinct())
+```
+
+ 
+
+Let's repair the names of variables:
+
+```{r nr_data, eval=TRUE,cache=TRUE}
+# Name repair
+vice_data_cl <- janitor::clean_names(vice_data)
+```
+
+Now time for checking problems in dataset previous turning to data analysis
+
+```{r diag_data, eval=TRUE,cache=TRUE}
+diagnose(vice_data_cl)
+```
+
+### Data Wrangling
+
+When we diagnosed **vice_data_cl** data frame we noticed that **final_link**, **image_text**, **description**, **sponsor_id**, **sponsor_name**, **sponsor_category** variables have more than $90\%$ missing data. Also we can notice that **page_admin_top_country** variables has a single value **US** so it will not be included in analytics. Let's remove these variables
+
+```{r rem_data, eval=TRUE,cache=TRUE}
+vice_data_cl <- vice_data_cl %>% select(-c('final_link', 'image_text', 'description', 'sponsor_id', 'sponsor_name', 'sponsor_category'))
+```
+
+Next step is to turn our two variables **page_created** and **post_created** to the right date-time format. We will use Vilnius timezone where company is located.
+
+```{r date-time, eval=TRUE,cache=TRUE}
+vice_data_cl$page_created <- as.POSIXct(vice_data_cl$page_created, tz = 'Europe/Vilnius')
+vice_data_cl$post_created <- as.POSIXct(vice_data_cl$post_created, tz = 'Europe/Vilnius')
+vice_data_cl$video_length <- lubridate::period_to_seconds(lubridate::hms(vice_data_cl$video_length))
+```
+
+## Analytics
+
+**Question 1. Based on the data, comment on how VICE's content strategy has shifted over time. You are free to focus on just a few aspects of your choice.**
+
+We'll walk through several video metrics to answer question 1.
+
+### Post Creation
+
+#### Posting by year
+
+```{r year_post, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  
+  mutate(year = lubridate::year(post_created)) %>% 
+  group_by(year) %>% summarise(freq = n()) -> year_freqs 
+ggplot(year_freqs, aes(x=year, y=freq)) +
+  geom_bar(fill = 'green', stat='identity') 
+```
+
+#### Posting by month
+
+```{r month_post, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  
+  mutate(year = lubridate::year(post_created)) %>% 
+  mutate(month = lubridate::month(post_created, label=TRUE)) %>%   
+  group_by(year, month) %>% 
+  summarise(freq = n())  -> month_freqs 
+# subset 2 months around flood
+month_freqs %>%
+  ggplot(aes(x = month, y = freq)) +
+  geom_bar(stat = "identity", fill = "darkorchid4") +
+  facet_wrap(~ year, ncol = 1) +
+  labs(title = "Monthly Video Postings")
+```
+
+#### Posting by day
+
+```{r day_post, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  
+  mutate(year = lubridate::year(post_created)) %>% 
+  mutate(day = lubridate::date(post_created)) %>% 
+  group_by(year, day) %>% 
+  summarise(freq = n())  -> day_freqs
+ggplot(day_freqs, aes(x = day, y = freq)) + 
+  geom_line(aes(color = factor(year))) 
+
+```
+
+#### Frequency of Daily Posting
+
+```{r dayf_post, eval=TRUE,cache=TRUE}
+source("https://raw.githubusercontent.com/iascchen/VisHealth/master/R/calendarHeat.R")
+vcl <- vice_data_cl %>%  
+  select(post_created) %>%  
+  group_by(post_created) %>% 
+  summarise(freq = n()) 
+
+r2g <- c("#D61818", "#FFAE63", "#FFFFBD", "#B5E384")
+calendarHeat(vcl$post_created, vcl$freq, ncolors = 99, color = "r2g", varname="Frequency of Daily Posting")
+```
+#### Monthly Average of Daily POsts
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created) %>% 
+count(post_created)  %>%
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+
+by_month <- vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(av_posts = mean(n)) 
+
+ggplot( data = by_month, 
+aes(x = Start.Month, y = av_posts, fill=as.factor(lubridate::year(Start.Month)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Monthly Average of Daily Posts", x=NULL,  y="Number of Posts") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+#### Weekly Average of Daily POsts
+
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created) %>% 
+count(post_created)  %>%
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+
+by_week <- vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(av_posts = mean(n)) 
+
+ggplot( data = by_week, 
+aes(x = Start.Week, y = av_posts, fill=as.factor(lubridate::year(Start.Week)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Weekly Average of Daily Posts", x=NULL,  y="Number of Posts") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+
+
+#### Page Posting Over Time
+
+
+```{r channel_post, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  select(post_created, page_name) %>% 
+  group_by(post_created, page_name) %>% 
+  summarise(freq = n()) %>%
+  spread(key=page_name, value=freq) %>%
+  select(-post_created) %>%
+  ts_plot( title = "Page Posting over Time",
+          Xtitle = "Time",
+          Ytitle = "Number of Posts")
+```
+
+
+#### Monthly Average of Page Posting Over Time
+
+
+```{r}
+vlc<- vice_data_cl %>%  
+select(post_created, page_name) %>% 
+group_by(post_created, page_name) %>%  
+count(post_created)  %>%
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+
+vlc %>%
+  group_by(Start.Month, page_name) %>%           
+  summarise(av_posts = mean(n)) %>%
+  spread(key=page_name, value=av_posts) %>%
+  ts_plot( title = "Page Posting over Time",
+          Xtitle = "Time",
+          Ytitle = "Number of Posts")
+```
+
+
+#### Weekly Average of Page Posting Over Time
+
+
+```{r}
+vlc<- vice_data_cl %>%  
+select(post_created, page_name) %>% 
+group_by(post_created, page_name) %>%  
+count(post_created)  %>%
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+
+vlc %>%
+  group_by(Start.Week, page_name) %>%           
+  summarise(av_posts = mean(n)) %>%
+  spread(key=page_name, value=av_posts) %>%
+  ts_plot( title = "Page Posting over Time",
+          Xtitle = "Time",
+          Ytitle = "Number of Posts")
+```
+
+
+
+#### Daily Post Views Over Time
+
+View count is the total number of people who have viewed your video.
+
+Facebook measure a view by checking if someone views your video for 3 seconds (same for Live videos)
+
+View count can be considered more of a vanity metric, as the number of views don't really affect your bottom line if no other action is taken. However, this still shows us that we need to make those first 3-30 seconds hyper-engaging in order to reel a viewer in.
+
+```{r view_count, eval=TRUE,cache=TRUE}
+don <- xts(x = vice_data_cl$post_views, order.by = vice_data_cl$post_created)
+# Finally the plot
+p <- dygraph(don, main = "Post Views Over Time", 
+        ylab = "Number of Views") %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1) 
+p 
+```
+
+#### Daily Total Views Over Time
+
+
+```{r view_total, eval=TRUE,cache=TRUE}
+don <- xts(x = vice_data_cl$total_views, order.by = vice_data_cl$post_created)
+# Finally the plot
+p <- dygraph(don, main = "Total Views Over Time", 
+        ylab = "Number of Views") %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1) 
+p 
+```
+
+
+
+#### Monthly Average of Views Over Time
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, post_views) %>%
+group_by(post_created) %>%  
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+
+by_month <- vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(av_views = mean(post_views)) 
+
+ggplot( data = by_month, 
+aes(x = Start.Month, y = av_views, fill=as.factor(lubridate::year(Start.Month)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Monthly Average of Views Over Time", x=NULL,  y="Number of Views") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+
+
+
+
+
+
+#### Weekly Average of Views Over Time
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, post_views) %>%
+group_by(post_created) %>%  
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+
+by_week <- vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(av_views = mean(post_views)) 
+
+ggplot( data = by_week, 
+aes(x = Start.Week, y = av_views, fill=as.factor(lubridate::year(Start.Week)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Weekly Average of Views Over Time", x=NULL,  y="Number of Views") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+
+
+
+
+#### Total Views for all Crossposts Over Time
+
+
+```{r view_cross, eval=TRUE,cache=TRUE}
+don <- xts(x = vice_data_cl$total_views_for_all_crossposts, order.by = vice_data_cl$post_created)
+# Finally the plot
+p <- dygraph(don, main = "Total Views for all Crossposts Over Time", 
+        ylab = "Number of Views") %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1) 
+p 
+```
+
+
+
+#### Monthly Average of Total Views for all Crossposts Over Time
+
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+
+by_month <- vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(av_views = mean(total_views_for_all_crossposts)) 
+
+ggplot( data = by_month, 
+aes(x = Start.Month, y = av_views, fill=as.factor(lubridate::year(Start.Month)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Monthly Average of Total Views for all Crossposts Over Time", x=NULL,  y="Number of Views") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+
+
+
+
+
+
+#### Weekly Average of Total Views for all Crossposts Over Time
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+
+by_week <- vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(av_views = mean(total_views_for_all_crossposts)) 
+
+ggplot( data = by_week, 
+aes(x = Start.Week, y = av_views, fill=as.factor(lubridate::year(Start.Week)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Weekly Average of Total Views for all Crossposts Over Time", x=NULL,  y="Number of Views") + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+
+
+
+
+
+
+
+
+#### Total Views vs Total Views for All Crossposts Overtime
+
+```{r view_comp, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  select(post_created, total_views, total_views_for_all_crossposts) %>% 
+  group_by(post_created) %>% 
+  ts_plot(title = " Total views vs Total Views for All crossposts Over Time",
+          Xtitle = "Time",
+          Ytitle = "Frequency")
+```
+
+
+#### Monthly Average of Total Views vs Total Views for All Crossposts Overtime
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, total_views, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(av_tot_views = mean(total_views), av_tot_cviews = mean(total_views_for_all_crossposts)) %>%
+  ts_plot(title = " Monthly Average of Total Views vs Total Views for All Crossposts Overtime",
+          Xtitle = "Time",
+          Ytitle = "Frequency")
+
+```
+
+
+
+#### Weekly Average of Total Views vs Total Views for All Crossposts Overtime
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, total_views, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(av_tot_views = mean(total_views), av_tot_cviews = mean(total_views_for_all_crossposts)) %>%
+  ts_plot(title = " Weekly Average of Total Views vs Total Views for All Crossposts Overtime",
+          Xtitle = "Time",
+          Ytitle = "Frequency")
+```
+
+
+### Video Length
+
+#### Posted Video Length
+
+```{r video_len, eval=TRUE,cache=TRUE}
+vice_data_cl %>%
+  filter( video_length < 1200 ) %>%
+  ggplot( aes(x= video_length)) +
+  geom_histogram( binwidth=10, fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+  ggtitle("Histogram of Posted Video Length ") +
+  theme_ipsum() +
+  theme(
+    plot.title = element_text(size=15)
+  ) + 
+  scale_y_continuous(breaks=seq(0,1000,50)) + 
+  scale_x_continuous(breaks=seq(0,1200,100))
+```
+
+#### Length of Video Posts in Time
+
+```{r vl_time, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  select(post_created, video_length) %>%
+  filter( video_length < 1200 ) %>%
+  mutate(year = lubridate::year(post_created)) %>%
+select(year, video_length) %>%
+ggplot(aes(x=video_length, fill = as.factor(year)))+
+  geom_histogram( color='#e9ecef', alpha=0.6) + 
+labs(title = "Posted Video Lengths in Years") +
+xlab('Video Length') +
+ylab('Frequency of Video Posts') +
+guides(fill=guide_legend(title="Years"))  
+```
+
+
+
+#### Monthly Average of Video Length
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, video_length) %>% 
+group_by(post_created)  %>%
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"))
+
+
+by_month <- vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(av_length = mean(video_length)) 
+
+ggplot( data = by_month, 
+aes(x = Start.Month, y = av_length, fill=as.factor(lubridate::year(Start.Month)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Monthly Average of Video Length", x=NULL,  y="Video Length") + 
+  theme_minimal() +
+  theme(legend.position = "none") +
+scale_y_continuous(breaks=seq(0, 1000,100), limits=c(0,1000))
+```
+
+
+#### Weekly Average of Daily POsts
+
+```{r}
+vlc <- vice_data_cl %>%  
+select(post_created, video_length) %>% 
+group_by(post_created)  %>%
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"))
+
+
+by_week <- vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(av_length = mean(video_length)) 
+
+ggplot( data = by_week, 
+aes(x = Start.Week, y = av_length, fill=as.factor(lubridate::year(Start.Week)))) +
+geom_col() +  
+scale_fill_brewer(palette = "Paired") +
+labs(title="Weekly Average of Video Length", x=NULL,  y="Video Length") + 
+  theme_minimal() +
+  theme(legend.position = "none") +
+scale_y_continuous(breaks=seq(0, 1000,100), limits=c(0,1000))
+```
+
+
+
+
+### Engagement
+
+Video engagement includes the comments and likes that video content generates.
+
+It's a good idea to see how many people are actually taking action on your video, but more than that, company pay attention to the types of comments is getting.
+
+#### Daily User Activity
+
+```{r act_day, eval=TRUE,cache=TRUE}
+don <- xts(x = vice_data_cl$total_interactions, order.by = vice_data_cl$post_created)
+# Finally the plot
+p <- dygraph(don, main = "Total Interactions Over Time", 
+        ylab = "Number of Views") %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1) 
+p 
+```
+
+#### Daily User Activity
+
+```{r act_year, eval=TRUE,cache=TRUE}
+vice_data_cl %>%  select(post_created, total_interactions) %>%
+filter( total_interactions < 5000 ) %>%
+mutate(year = lubridate::year(post_created)) %>%
+select(year, total_interactions) %>%
+ggplot(aes(x=total_interactions, fill = as.factor(year)))+
+geom_histogram( binwidth=200,color="#e9ecef", alpha=0.9) +
+ggtitle("Histogram of Total Interactions During Years ") +
+theme_ipsum() +
+theme(
+plot.title = element_text(size=15)
+) +
+xlab('Total Interactions') +
+ylab('Frequency of Total Interactions') +
+guides(fill=guide_legend(title="Years"))   
+```
+
+#### Relationship between different user reactions
+
+```{r inter_rel, eval=TRUE,cache=TRUE}
+vice_data_cl %>% 
+select(likes, comments, shares, love, wow, haha, sad, angry, care) %>%
+ggpairs()  
+```
+
+
+
+
+#### Comparision of weekly user interaction rates
+
+
+```{r week_inter, eval=TRUE,cache=TRUE}
+vlc <- vice_data_cl %>%  
+select(post_created, likes, comments, shares, love, wow, haha, sad, angry, care, total_interactions) %>%
+group_by(post_created) %>%  
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"),
+       like_ratio = likes/total_interactions,
+       comments_ratio = comments/total_interactions,
+       shares_ratio = shares/total_interactions,
+       love_ratio = love/total_interactions,
+       wow_ratio = wow/total_interactions,
+       haha_ratio = haha/total_interactions,
+       sad_ratio = sad/total_interactions,
+       angry_ratio = angry/total_interactions,
+       care_ratio = care/total_interactions) %>%
+select(post_created, like_ratio, comments_ratio, shares_ratio, love_ratio, wow_ratio, haha_ratio, sad_ratio, angry_ratio, care_ratio, Start.Week)  
+
+vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(
+    av_like_ratio = mean(like_ratio),
+    av_comments_ratio = mean(comments_ratio),
+    av_shares_ratio = mean(shares_ratio),
+    av_love_ratio = mean(love_ratio),
+    av_wow_ratio = mean(wow_ratio),
+    av_haha_ratio = mean(haha_ratio),
+    av_sad_ratio = mean(sad_ratio),
+    av_angry_ratio = mean(angry_ratio),
+    av_care_ratio  = mean(care_ratio)) %>%
+  ts_plot(title = " Comparision of weekly user interaction rates Over Time",
+          Xtitle = "Time",
+          Ytitle = "")
+```
+
+#### Comparision of monthly user interaction rates
+
+
+```{r month_inter, eval=TRUE,cache=TRUE}
+vlc <- vice_data_cl %>%  
+select(post_created, likes, comments, shares, love, wow, haha, sad, angry, care, total_interactions) %>%
+group_by(post_created) %>%  
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"),
+       like_ratio = likes/total_interactions,
+       comments_ratio = comments/total_interactions,
+       shares_ratio = shares/total_interactions,
+       love_ratio = love/total_interactions,
+       wow_ratio = wow/total_interactions,
+       haha_ratio = haha/total_interactions,
+       sad_ratio = sad/total_interactions,
+       angry_ratio = angry/total_interactions,
+       care_ratio = care/total_interactions) %>%
+select(post_created, like_ratio, comments_ratio, shares_ratio, love_ratio, wow_ratio, haha_ratio, sad_ratio, angry_ratio, care_ratio, Start.Month)  
+
+vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(
+    av_like_ratio = mean(like_ratio),
+    av_comments_ratio = mean(comments_ratio),
+    av_shares_ratio = mean(shares_ratio),
+    av_love_ratio = mean(love_ratio),
+    av_wow_ratio = mean(wow_ratio),
+    av_haha_ratio = mean(haha_ratio),
+    av_sad_ratio = mean(sad_ratio),
+    av_angry_ratio = mean(angry_ratio),
+    av_care_ratio  = mean(care_ratio)) %>%
+  ts_plot(title = " Comparision of monthly user interaction rates Over Time",
+          Xtitle = "Time",
+          Ytitle = "")
+```
+
+#### Monthy effect of Angry Reaction in Video Performance
+
+
+```{r month_inter_angry, eval=TRUE,cache=TRUE}
+library(ggpubr)
+vlc <- vice_data_cl %>%  
+select(post_created, angry, total_interactions, likes_at_posting, followers_at_posting, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month"),
+       angry_ratio = angry/total_interactions) %>%
+select(post_created, angry_ratio, Start.Month,  total_interactions, likes_at_posting, followers_at_posting, total_views_for_all_crossposts)  
+
+vlc <- vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(
+    av_angry_ratio = mean(angry_ratio),
+    av_total_interactions  = mean(total_interactions),
+    av_likes_at_posting  = mean(likes_at_posting),
+    av_total_views_for_all_crossposts  = mean(total_views_for_all_crossposts) ) 
+
+
+vlc1 <- vlc %>% select(Start.Month, av_angry_ratio)
+vlc2 <- vlc %>% select(Start.Month, av_total_interactions)
+vlc3 <- vlc %>% select(Start.Month, av_likes_at_posting)
+vlc4 <- vlc %>% select(Start.Month, av_total_views_for_all_crossposts)
+
+p1 <- ggplot(vlc1, aes(x=Start.Month, av_angry_ratio)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Angry Ratio by Month") +
+  xlab("Time")
+
+
+p2 <- ggplot(vlc2, aes(x=Start.Month, av_total_interactions)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Monthly Average of Total Interactions") +
+  xlab("Time")
+
+p3 <- ggplot(vlc3, aes(x=Start.Month, av_likes_at_posting)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Monthly Average of Likes at Posting") +
+  xlab("Time")
+
+p4 <- ggplot(vlc4, aes(x=Start.Month, av_total_views_for_all_crossposts)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Monthly Average of Total Crossposts") +
+  xlab("Time")
+
+ggarrange(p1,p2,p3,p4)
+
+
+```
+
+#### Weekly of Angry Reaction in Video Performance
+
+
+```{r week_inter_angry, eval=TRUE,cache=TRUE}
+library(ggpubr)
+vlc <- vice_data_cl %>%  
+select(post_created, angry, total_interactions, likes_at_posting, followers_at_posting, total_views_for_all_crossposts) %>%
+group_by(post_created) %>%  
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week"),
+       angry_ratio = angry/total_interactions) %>%
+select(post_created, angry_ratio, Start.Week,  total_interactions, likes_at_posting, followers_at_posting, total_views_for_all_crossposts)  
+
+vlc <- vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(
+    av_angry_ratio = mean(angry_ratio),
+    av_total_interactions  = mean(total_interactions),
+    av_likes_at_posting  = mean(likes_at_posting),
+    av_total_views_for_all_crossposts  = mean(total_views_for_all_crossposts) ) 
+
+
+vlc1 <- vlc %>% select(Start.Week, av_angry_ratio)
+vlc2 <- vlc %>% select(Start.Week, av_total_interactions)
+vlc3 <- vlc %>% select(Start.Week, av_likes_at_posting)
+vlc4 <- vlc %>% select(Start.Week, av_total_views_for_all_crossposts)
+
+p1 <- ggplot(vlc1, aes(x=Start.Week, av_angry_ratio)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Angry Ratio by Week") +
+  xlab("Time")
+
+
+p2 <- ggplot(vlc2, aes(x=Start.Week, av_total_interactions)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Weekly Average of Total Interactions") +
+  xlab("Time")
+
+p3 <- ggplot(vlc3, aes(x=Start.Week, av_likes_at_posting)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Weekly Average of Likes at Posting") +
+  xlab("Time")
+
+p4 <- ggplot(vlc4, aes(x=Start.Week, av_total_views_for_all_crossposts)) +
+  geom_line( color="steelblue") + 
+  geom_point() +
+  xlab("") +
+  theme_ipsum() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  ylab("Weekly Average of Total Crossposts") +
+  xlab("Time")
+
+ggarrange(p1,p2,p3,p4)
+
+
+```
+
+
+### Social shares
+
+One of main goals for video content should be social shares. This widens audience exponentially, increasing brand awareness and potentially bringing in new leads.
+
+#### Video Share Status -- owned vs crosspost
+
+```{r, video_share, eval=TRUE,cache=TRUE}
+vlc<- vice_data_cl %>% 
+  select(post_created, video_share_status) %>% 
+  group_by(post_created, video_share_status) %>% 
+  summarise(freq = n()) %>%
+  spread(key=video_share_status, value=freq) %>%
+  select(crosspost, owned, share)
+ts_plot(vlc,         title = "Video Share Status Over Time",
+        Xtitle = "Time",
+        Ytitle = "Frequency")
+```
+
+
+#### Monthly Average Comparision of Video Share Status -- owned vs crosspost
+
+```{r, month_video_comp, eval=TRUE,cache=TRUE}
+vlc<- vice_data_cl %>% 
+  select(post_created, video_share_status) %>% 
+  group_by(post_created, video_share_status) %>% 
+  summarise(freq = n()) %>%
+  spread(key=video_share_status, value=freq) %>%
+  select(crosspost, owned, share) %>%
+mutate(Start.Month = lubridate::floor_date(post_created, unit = "month")) %>%
+  select(Start.Month, crosspost, owned, share)
+
+vlc %>%
+  group_by(Start.Month) %>%           
+  summarise(
+    crosspost_ratio = mean(crosspost),
+    owned_ratio = mean(owned),
+    share_ratio = mean(share)) %>%
+  ts_plot(title = " Monthly Comparision of Video Share Status",
+          Xtitle = "Time",
+          Ytitle = "")
+```
+
+#### Weekly Average Comparision of Video Share Status -- owned vs crosspost
+
+```{r, week_video_comp, eval=TRUE,cache=TRUE}
+vlc<- vice_data_cl %>% 
+  select(post_created, video_share_status) %>% 
+  group_by(post_created, video_share_status) %>% 
+  summarise(freq = n()) %>%
+  spread(key=video_share_status, value=freq) %>%
+  select(crosspost, owned, share) %>%
+mutate(Start.Week = lubridate::floor_date(post_created, unit = "week")) %>%
+  select(Start.Week, crosspost, owned, share)
+
+vlc %>%
+  group_by(Start.Week) %>%           
+  summarise(
+    crosspost_ratio = mean(crosspost),
+    owned_ratio = mean(owned),
+    share_ratio = mean(share)) %>%
+  ts_plot(title = " Monthly Comparision of Video Share Status",
+          Xtitle = "Time",
+          Ytitle = "")
+```
+
+## Neural Language Processing
+
+
+
