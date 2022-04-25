@@ -961,4 +961,160 @@ vlc %>%
 ## Neural Language Processing
 
 
+Let's start with data cleaning for variables **message** and **link_text**. Because of text specifics, cleaning is done in two stages:
 
+For **message** :
+
+
+```{r, cleaning-text, eval=TRUE,cache=TRUE}
+text <- as.character(vice_data_cl$message) %>%
+tolower() %>%
+  # remove non-word characters
+  str_replace_all("[^[:alpha:][:space:]]*", "")  %>%
+  tm::removePunctuation() %>%
+  stringr::str_squish() %>%
+  stringr::str_split(" ") %>%
+  textclean::replace_non_ascii(replacement = "") %>%
+  unlist()
+
+message_corpus <- Corpus(VectorSource(na.omit(text))) 
+
+english_stopwords <- readLines("https://slcladal.github.io/resources/stopwords_en.txt", encoding = "UTF-8")
+
+
+message_clean_corpus <- tm_map(message_corpus, content_transformer(tolower))
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(removeWords), english_stopwords)
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(removePunctuation), preserve_intra_word_dashes = TRUE)
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(removeNumbers))
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(stemDocument), language = "en")
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(stripWhitespace))
+message_clean_corpus <- tm_map(message_clean_corpus, content_transformer(stemDocument))
+
+
+clean_fun <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+
+message_clean_corpus <- tm_map(message_clean_corpus, clean_fun, "/")
+message_clean_corpus <- tm_map(message_clean_corpus, clean_fun , "@")
+message_clean_corpus <- tm_map(message_clean_corpus, clean_fun , "\\|")
+
+```
+
+Now the same for **link_text**
+
+
+```{r, cleaning-ltext, eval=TRUE,cache=TRUE}
+link_text <- as.character(vice_data_cl$link_text) %>%
+tolower() %>%
+  # remove non-word characters
+  str_replace_all("[^[:alpha:][:space:]]*", "")  %>%
+  tm::removePunctuation() %>%
+  stringr::str_squish() %>%
+  stringr::str_split(" ") %>%
+  textclean::replace_non_ascii(replacement = "") %>%
+  unlist()
+
+ltext_corpus <- Corpus(VectorSource(na.omit(link_text))) 
+
+english_stopwords <- readLines("https://slcladal.github.io/resources/stopwords_en.txt", encoding = "UTF-8")
+
+
+ltext_clean_corpus <- tm_map(ltext_corpus, content_transformer(tolower))
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(removeWords), english_stopwords)
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(removePunctuation), preserve_intra_word_dashes = TRUE)
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(removeNumbers))
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(stemDocument), language = "en")
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(stripWhitespace))
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, content_transformer(stemDocument))
+
+
+clean_fun <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, clean_fun, "/")
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, clean_fun , "@")
+ltext_clean_corpus <- tm_map(ltext_clean_corpus, clean_fun , "\\|")
+
+```
+
+
+Now we will calculate topic model for both created corpuses. First we vectorize:
+
+```{r, dtm, eval=TRUE,cache=TRUE}
+dtm_message <- DocumentTermMatrix(message_clean_corpus, control = list(wordLengths = c(2, Inf)))
+dtm_ltext <- DocumentTermMatrix(ltext_clean_corpus, control = list(wordLengths = c(2, Inf)))
+```
+
+
+Next, we determine the optimal number of topics from **dtm_message**:
+
+```{r, message_topic_number, eval=TRUE,cache=TRUE}
+# Remove zero elements to perform LDA
+raw.sum=apply(dtm_message,1,FUN=sum) 
+dtm_message=dtm_message[raw.sum!=0,]
+# For message_dtm
+message_result <- FindTopicsNumber(
+  dtm_message,
+  topics = seq(from = 2, to = 15, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 77),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+FindTopicsNumber_plot(message_result)
+```
+
+
+
+Basically we look for parameters that minimize Arun and CaoJuan, or maximize Griffiths and Deveaud. For our purpose we take $k = 7$
+
+
+```{r, lda_message, eval=TRUE,cache=TRUE}
+K <- 7
+# compute the LDA model, inference via 1000 iterations of Gibbs sampling
+message_topicModel <- LDA(dtm_message, K, method="Gibbs", control=list(iter = 500, verbose = 25))
+```
+
+
+Below 20 most likely terms within the term probabilities beta of the inferred topics
+
+```{r, popular_word_message, eval=TRUE,cache=TRUE}
+terms(message_topicModel, 20)
+```
+
+Let's repeat the same procedure for the **link_message**
+
+
+```{r, topic_number_ltext, eval=TRUE,cache=TRUE}
+# Remove zero elements to perform LDA
+raw.sum=apply(dtm_ltext,1,FUN=sum) 
+dtm_ltext=dtm_ltext[raw.sum!=0,]
+# For message_dtm
+ltext_result <- FindTopicsNumber(
+  dtm_ltext,
+  topics = seq(from = 2, to = 15, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 77),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+FindTopicsNumber_plot(ltext_result)
+```
+
+
+
+For our purpose we take $k = 7$
+
+
+```{r, lda_ltext, eval=TRUE,cache=TRUE}
+K <- 7
+# compute the LDA model, inference via 1000 iterations of Gibbs sampling
+ltext_topicModel <- LDA(dtm_ltext, K, method="Gibbs", control=list(iter = 500, verbose = 25))
+```
+
+
+Below 20 most likely terms within the term probabilities beta of the inferred topics
+
+```{r, popular_word_ltext, eval=TRUE,cache=TRUE}
+terms(ltext_topicModel, 20)
+```
