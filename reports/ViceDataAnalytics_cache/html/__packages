@@ -32,6 +32,7 @@ tidystopwords
 quanteda
 topicmodels
 ldatuning
+lda
 lattice
 chron
 ggpubr

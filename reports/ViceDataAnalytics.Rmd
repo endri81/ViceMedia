@@ -4,6 +4,7 @@ date: "`r Sys.Date()`"
 author: "Endri Raco"
 output:
   rmdformats::downcute:
+    toc_depth: 3
     self_contained: true
     default_style: "light"
     downcute_theme: "default"
@@ -66,6 +67,8 @@ if(!require(topicmodels)) install.packages("topicmodels",
                                     repos = "http://cran.us.r-project.org")
 if(!require(ldatuning)) install.packages("ldatuning", 
                                     repos = "http://cran.us.r-project.org")
+if(!require(lda)) install.packages("lda", 
+                                    repos = "http://cran.us.r-project.org")
 
 knitr::opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE)
 customColor = "#FFA07A"
@@ -90,10 +93,8 @@ print('Operating System:')
 version
 ```
 
- 
 
 ## Data preparation
-
 ### Importing data
 
 ```{r data-download}
@@ -105,7 +106,7 @@ vice_data <- read_csv(data_path)
 
 First, we make a check if our data format is indeed **data frame**:
 
- 
+
 
 ```{r data-format, eval=TRUE}
 # Check format
@@ -114,7 +115,7 @@ class(vice_data)
 
 We see that **vice_data** data frame has `r nrow(vice_data)` rows and `r ncol(vice_data)` variables.
 
- 
+
 
 Now let's check the structure of **vice_data** data frame
 
@@ -163,12 +164,7 @@ vice_data_cl$post_created <- as.POSIXct(vice_data_cl$post_created, tz = 'Europe/
 vice_data_cl$video_length <- lubridate::period_to_seconds(lubridate::hms(vice_data_cl$video_length))
 ```
 
-## Analytics
-
-**Question 1. Based on the data, comment on how VICE's content strategy has shifted over time. You are free to focus on just a few aspects of your choice.**
-
-We'll walk through several video metrics to answer question 1.
-
+## Information Extracting
 ### Post Creation
 
 #### Posting by year
@@ -327,8 +323,7 @@ vlc %>%
           Ytitle = "Number of Posts")
 ```
 
-
-
+### Post Views
 #### Daily Post Views Over Time
 
 View count is the total number of people who have viewed your video.
@@ -496,11 +491,6 @@ labs(title="Weekly Average of Total Views for all Crossposts Over Time", x=NULL,
 
 
 
-
-
-
-
-
 #### Total Views vs Total Views for All Crossposts Overtime
 
 ```{r view_comp, eval=TRUE,cache=TRUE}
@@ -526,7 +516,6 @@ vlc %>%
   ts_plot(title = " Monthly Average of Total Views vs Total Views for All Crossposts Overtime",
           Xtitle = "Time",
           Ytitle = "Frequency")
-
 ```
 
 
@@ -607,7 +596,7 @@ scale_y_continuous(breaks=seq(0, 1000,100), limits=c(0,1000))
 ```
 
 
-#### Weekly Average of Daily POsts
+#### Weekly Average of Video Length
 
 ```{r}
 vlc <- vice_data_cl %>%  
@@ -719,6 +708,7 @@ vlc %>%
           Xtitle = "Time",
           Ytitle = "")
 ```
+
 
 #### Comparision of monthly user interaction rates
 
@@ -958,8 +948,11 @@ vlc %>%
           Ytitle = "")
 ```
 
-## Neural Language Processing
 
+
+
+## Natural Language Processing
+### Data Cleaning
 
 Let's start with data cleaning for variables **message** and **link_text**. Because of text specifics, cleaning is done in two stages:
 
@@ -1035,6 +1028,7 @@ ltext_clean_corpus <- tm_map(ltext_clean_corpus, clean_fun , "\\|")
 
 ```
 
+### Topic Model
 
 Now we will calculate topic model for both created corpuses. First we vectorize:
 
@@ -1069,9 +1063,11 @@ Basically we look for parameters that minimize Arun and CaoJuan, or maximize Gri
 
 
 ```{r, lda_message, eval=TRUE,cache=TRUE}
+raw.sum=apply(dtm_message,1,FUN=sum) 
+dtm_message=dtm_message[raw.sum!=0,]
 K <- 7
 # compute the LDA model, inference via 1000 iterations of Gibbs sampling
-message_topicModel <- LDA(dtm_message, K, method="Gibbs", control=list(iter = 500, verbose = 25))
+message_topicModel <- LDA(dtm_message, K, method="Gibbs", control=list(iter = 500, verbose = 25, alpha = 0.2))
 ```
 
 
@@ -1084,7 +1080,7 @@ terms(message_topicModel, 20)
 Let's repeat the same procedure for the **link_message**
 
 
-```{r, topic_number_ltext, eval=TRUE,cache=TRUE}
+```{r, topic_number_ltext, eval=FALSE,cache=TRUE}
 # Remove zero elements to perform LDA
 raw.sum=apply(dtm_ltext,1,FUN=sum) 
 dtm_ltext=dtm_ltext[raw.sum!=0,]
@@ -1107,9 +1103,11 @@ For our purpose we take $k = 7$
 
 
 ```{r, lda_ltext, eval=TRUE,cache=TRUE}
+raw.sum=apply(dtm_ltext,1,FUN=sum) 
+dtm_ltext=dtm_ltext[raw.sum!=0,]
 K <- 7
 # compute the LDA model, inference via 1000 iterations of Gibbs sampling
-ltext_topicModel <- LDA(dtm_ltext, K, method="Gibbs", control=list(iter = 500, verbose = 25))
+ltext_topicModel <- LDA(dtm_ltext, K, method="Gibbs", control=list(iter = 500, verbose = 25, alpha = 0.2))
 ```
 
 
@@ -1129,7 +1127,9 @@ ltext_topic_name <- terms(ltext_topicModel, 7)
 ltext_topicNames <- apply(ltext_topic_name, 2, paste, collapse=" ")
 ```
 
-Lets visualiza topic models:
+### Information Extraction
+
+Lets visualize topic models:
 
 ```{r, tidy_lda, eval=TRUE,cache=TRUE}
 message_lda <- tidy(message_topicModel)
@@ -1214,16 +1214,163 @@ wordcloud(words, probabilities, random.order = FALSE, color = mycolors)
 The message topic model includes two  posterior probability distributions: a distribution $\theta$ over K topics within each document and a distribution $\beta$ over V terms within each topic, where V represents the length of the vocabulary of the collection. Let's check V in **dtm_message**:
 
 
-```{r}
+```{r, message_post_dist, eval=TRUE,cache=TRUE}
 nTerms(dtm_message) ## Our V value
-beta <- message_result$terms ## Our beta distribution
-dim(beta)
-theta <- message_result$topics ## Our theta distribution
-dim(theta)   
+message_post_result <- posterior(message_topicModel)
+message_beta <- message_post_result$terms ## Our beta distribution
+dim(message_beta)
+message_theta <- message_post_result$topics  ## Our theta distribution
+dim(message_theta) 
+```
+
+For **link_text**
+
+```{r, ltext_post_dist, eval=TRUE,cache=TRUE}
+nTerms(dtm_ltext) ## Our V value
+ltext_post_result <- posterior(ltext_topicModel)
+ltext_beta <- ltext_post_result$terms ## Our beta distribution
+dim(ltext_beta)
+ltext_theta <- ltext_post_result$topics  ## Our theta distribution
+dim(ltext_theta)   
+```
+
+
+
+Let's check on the distribution of topics
+
+```{r, id_sample, eval=TRUE,cache=TRUE}
+sample_id<- c(5, 50, 150, 250)
+lapply(message_clean_corpus[sample_id], as.character)
+message_topic_top_5 <- terms(message_topicModel, 5)
+message_topic_name <- apply(message_topic_top_5, 2, paste, collapse=" ")
+N <- length(sample_id)
+# Proportion for each sample
+sample_prop_message <- message_theta[sample_id,]
+colnames(sample_prop_message) <- message_topic_name
+message_plot <- reshape::melt(cbind(data.frame(sample_prop_message), document = factor(1:N)), variable.name = "topic", id.vars = "document")  
+ggplot(data = message_plot, aes(variable, value, fill = document), ylab = "proportion") + 
+  geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  
+  coord_flip() +
+  facet_wrap(~ document, ncol = N)
 ```
 
 
 
 
+Now we repeat the above steps for **link_text**
+
+```{r, ltext_sample, eval=TRUE,cache=TRUE}
+# Put some name for each topic
+ltext_topic_top_5 <- terms(ltext_topicModel, 5)
+ltext_topic_name <- apply(ltext_topic_top_5, 2, paste, collapse=" ")
+N <- length(sample_id)
+# Proportion for each sample
+ltext_prop_message <- ltext_theta[sample_id,]
+colnames(ltext_prop_message) <- ltext_topic_name
+ltext_plot <- reshape::melt(cbind(data.frame(ltext_prop_message), document = factor(1:N)), variable.name = "topic", id.vars = "document")  
+ggplot(data = message_plot, aes(variable, value, fill = document), ylab = "proportion") + 
+  geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  
+  coord_flip() +
+  facet_wrap(~ document, ncol = N)
+```
 
 
+
+### Topic ranking
+
+Now we try to get a more meaningful order of top terms per topic by re-ranking them with a specific score
+
+```{r, message_rank, eval=TRUE,cache=TRUE}
+message_topic_name <- apply(lda::top.topic.words(message_beta, 5, by.score = T), 2, paste, collapse = " ")
+```
+
+####  Rank-1 Methods
+
+
+```{r, message_sort, eval=TRUE,cache=TRUE}
+topic_count <- rep(0, K)
+names(topic_count) <- message_topic_name
+for (i in 1:nDocs(dtm_message)) {
+  doc_topic <- message_theta[i, ] 
+  high_topic <- order(doc_topic, decreasing = TRUE)[1] 
+  topic_count[high_topic] <- topic_count[high_topic] + 1
+}
+sort(topic_count, decreasing = TRUE)
+```
+
+
+
+
+```{r, message_sort_result, eval=TRUE,cache=TRUE}
+topic_sort <- sort(topic_count, decreasing = TRUE)
+paste(topic_sort, ":", names(topic_sort))
+```
+
+Now we repeat steps for **link_text**
+
+
+
+```{r, ltext_rank, eval=TRUE,cache=TRUE}
+ltext_topic_name <- apply(lda::top.topic.words(ltext_beta, 5, by.score = T), 2, paste, collapse = " ")
+topic_count <- rep(0, K)
+names(topic_count) <- ltext_topic_name
+for (i in 1:nDocs(dtm_ltext)) {
+  doc_topic <- ltext_theta[i, ] 
+  high_topic <- order(doc_topic, decreasing = TRUE)[1] 
+  topic_count[high_topic] <- topic_count[high_topic] + 1
+}
+sort(topic_count, decreasing = TRUE)
+```
+
+```{r, ltext_sort, eval=TRUE,cache=TRUE}
+topic_sort <- sort(topic_count, decreasing = TRUE)
+paste(topic_sort, ":", names(topic_sort))
+```
+
+## Conclusions
+### Question 1  How company content strategy has shifted over time
+
+In this study, several metrics are taken into account, such as the number of posts, video views, user engagement, and page growth.
+
+  1. Number of posts
+
+We see that during 2018, the monthly averages of company postings are very similar except for a slight increase in November and December of this year. We can see the same trend during 2019 as well. There is a drop in monthly averages of company postings during 2020 that started to be significant since March and remains similar for all 2020, probably because of pandemic situation. There is an increase in monthly averages of postings in February 2021, but in a lower rate compare to 2019.
+
+When it comes to daily postings, 2018 is characterized by active postings on Monday through Friday, with a lower frequency during weekends. An increase in posting frequency during weekends is noticed in November - December 2018 reaching the level of other daily weeks, and this trend remains unchanged during 2019 with a peak of postings in the third week of November, likely due to elections in US or sales season. Again 2020 shows a decreased frequency of postings which remains in these levels during whole 2020, with a slight increase in 2021.
+
+Vice News is the page which seems to be favorite when it comes to postings, with a continuous increase from 2018 to start of 2020 followed by a sharp decrease in the number of posts.
+
+Vice seems to be more stable with a rather smooth increase from 2018 to start of 2020, followed by not such as sharp decrease as Vice News and constantly improving by getting to the levels of 2019.
+
+Vice TV has experienced an increase in number of posts only in the last months of 2018, and immediately after that started to experience a gradually decrease in postings.
+
+
+
+  2. Video Views
+  
+When it comes to video views, company seems to have performed quite well with politics of slowing down postings number, and focusing more in user engagement and content. 2018 has an increase in monthly average total views, with some slowing during September - October. 2019 seems to be a very good year when it comes to the total view with a slower rate of increase from April to August. The increase trend seems to remains constant for first half of 2020 with a noticeable decrease in second half which seems to be recovered in first months in 2021. Company shows to be very focused on crossposts and views the video has amassed over all times it was posted. Average monthly crossposts show a constant high-rate increase from the start to July 2019 keeping a more constant rate during 2020 and 2021. The characteristic for average monthly cross-posts seems to be turbulence (frequent ups and downs), probably connected to video content.
+
+
+  3. Video Length
+  
+Company seems to keep posting videos of length (3.5-4 min) and while frequency of postings (number of videos during day) can variate, company seems to maintain a rather constant weekly average of video length posting, with rare turbulence, connected probably with live streaming. A rather small increase in video length is noticed from second half of 2020 after some disrupters continuing in 2021.
+
+
+  4. User Interaction
+  
+Users appear to the be faithful to pages during 2019. The last months of 2018 are characterized by some mixed feelings from users, showing a decrease in the number of likes, an increase in the number of comments, and a constant number of shares. More strong feelings like **sad**, **love**, and **angry** remain in constant very low rates which show that the user is not strongly negative affected by the content. The company seems to have reacted successfully to user feedback, because 2019 seems to be more commented on, while **likes** seem to stay constant, while an increase rate in **haha** shows more engaging content. The end of 2019 and the start of 2020 seem to show that the company has a good understanding of the willingness for content, reflected in higher like rates, lower level of comments, and constant rates for other feelings.
+  
+
+### Question 2  Are all kinds of engagement beneficial for video popularity?  
+
+  
+ It does not seem that all kinds of engagement are beneficial for video popularity, but this should be studied in different times. For example, plots show that **Angry** feeling has affected the page popularity measured in terms of **Average Interactions** and **Average Crossposts**. However, this effect seems to get unimportant and even comes in benefit in 2019 and on when page already has a constant flow of user interactions. Some reactions like **care** or **love** seem to be in very low rates to get a feeling about their importance in page performance.
+  
+
+
+### Question 3   Are there any topics, word combinations which always perform higher than average, or have been successful as of recently?
+
+
+As it may not seem strange **Covid19**, **Trump Impeachment**, and **Black Matters** are the hottest topics during the period of study with Covid to be the main topic. Beside that people seems to continue following their interests such as **Cooking** or **Entertainment Series**. The combinations which seem to perform higher are **world year coronavirus countries**, **news pm tonight trump** and **tonight demand episode stories**
