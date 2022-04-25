@@ -1118,3 +1118,112 @@ Below 20 most likely terms within the term probabilities beta of the inferred to
 ```{r, popular_word_ltext, eval=TRUE,cache=TRUE}
 terms(ltext_topicModel, 20)
 ```
+
+
+Lets give some name to topics:
+
+```{r, topic_names, eval=TRUE,cache=TRUE}
+message_topic_name <- terms(message_topicModel, 7)
+message_topicNames <- apply(message_topic_name, 2, paste, collapse=" ")
+ltext_topic_name <- terms(ltext_topicModel, 7)
+ltext_topicNames <- apply(ltext_topic_name, 2, paste, collapse=" ")
+```
+
+Lets visualiza topic models:
+
+```{r, tidy_lda, eval=TRUE,cache=TRUE}
+message_lda <- tidy(message_topicModel)
+ltext_lda <- tidy(ltext_topicModel)
+```
+
+
+Top 20 terms for each topic and then look at this information visually:
+
+
+```{r, message_lda_plot, eval=TRUE,cache=TRUE}
+message_top20_terms <- message_lda %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 20, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(topic, -beta) %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  group_by(topic, term) %>%    
+  arrange(desc(beta)) %>%  
+  ungroup() %>%
+  ggplot(aes(beta, term, fill = as.factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  scale_y_reordered() +
+  labs(title = "Top 20 terms in each message LDA topic",
+       x = expression(beta), y = NULL) +
+  facet_wrap(~ topic, ncol = 4, scales = "free")
+message_top20_terms
+
+```
+
+For **link_text**
+
+
+```{r, ltext_lda_plot, eval=TRUE,cache=TRUE}
+ltext_top20_terms <- ltext_lda %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 20, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(topic, -beta) %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  group_by(topic, term) %>%    
+  arrange(desc(beta)) %>%  
+  ungroup() %>%
+  ggplot(aes(beta, term, fill = as.factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  scale_y_reordered() +
+  labs(title = "Top 20 terms in each link_text LDA topic",
+       x = expression(beta), y = NULL) +
+  facet_wrap(~ topic, ncol = 4, scales = "free")
+ltext_top20_terms
+
+```
+Now we will use wordclouds to visualize our selected topics:
+
+```{r, message_wordcloud, eval=TRUE,cache=TRUE}
+message_post <- posterior(message_topicModel)
+# our topic of interest
+int_topic_message <- 1
+## 100 terms
+top100terms <- sort(message_post$terms[int_topic_message,], decreasing=TRUE)[1:100]
+words <- names(top100terms)
+probabilities <- sort(message_post$terms[int_topic_message,], decreasing=TRUE)[1:100]
+mycolors <- brewer.pal(7, "Dark2")
+wordcloud(words, probabilities, random.order = FALSE, color = mycolors)
+```
+
+
+Same for **link_text**
+
+```{r, ltextr_wordcloud, eval=TRUE,cache=TRUE}
+ltext_post <- posterior(ltext_topicModel)
+# our topic of interest
+int_topic_message <- 1
+## 100 terms
+top100terms <- sort(ltext_post$terms[int_topic_message,], decreasing=TRUE)[1:100]
+words <- names(top100terms)
+probabilities <- sort(ltext_post$terms[int_topic_message,], decreasing=TRUE)[1:100]
+mycolors <- brewer.pal(7, "Dark2")
+wordcloud(words, probabilities, random.order = FALSE, color = mycolors)
+```
+
+The message topic model includes two  posterior probability distributions: a distribution $\theta$ over K topics within each document and a distribution $\beta$ over V terms within each topic, where V represents the length of the vocabulary of the collection. Let's check V in **dtm_message**:
+
+
+```{r}
+nTerms(dtm_message) ## Our V value
+beta <- message_result$terms ## Our beta distribution
+dim(beta)
+theta <- message_result$topics ## Our theta distribution
+dim(theta)   
+```
+
+
+
+
+
+
