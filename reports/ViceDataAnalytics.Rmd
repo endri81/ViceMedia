@@ -206,6 +206,8 @@ ggplot(day_freqs, aes(x = day, y = freq)) +
 
 ```
 
+
+
 #### Frequency of Daily Posting
 
 ```{r dayf_post, eval=TRUE,cache=TRUE}
@@ -218,6 +220,9 @@ vcl <- vice_data_cl %>%
 r2g <- c("#D61818", "#FFAE63", "#FFFFBD", "#B5E384")
 calendarHeat(vcl$post_created, vcl$freq, ncolors = 99, color = "r2g", varname="Frequency of Daily Posting")
 ```
+
+
+
 #### Monthly Average of Daily POsts
 
 ```{r}
@@ -1080,7 +1085,7 @@ terms(message_topicModel, 20)
 Let's repeat the same procedure for the **link_message**
 
 
-```{r, topic_number_ltext, eval=FALSE,cache=TRUE}
+```{r, topic_number_ltext, eval=TRUE,cache=TRUE}
 # Remove zero elements to perform LDA
 raw.sum=apply(dtm_ltext,1,FUN=sum) 
 dtm_ltext=dtm_ltext[raw.sum!=0,]
